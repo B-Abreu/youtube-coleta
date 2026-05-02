@@ -5,7 +5,6 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const { XMLParser } = require('fast-xml-parser');
 const { YoutubeTranscript } = require('youtube-transcript');
 const OpenAI = require('openai');
 
@@ -57,24 +56,26 @@ async function resolverChannelId(handleUrl) {
   }
 }
 
-async function listarVideosRSS(channelId) {
-  const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+async function listarVideosViaApi(channelId) {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) throw new Error('YOUTUBE_API_KEY nao configurada');
+  // Truque: o ID da playlist de uploads do canal eh sempre "UU" + sufixo do channelId
+  const playlistId = 'UU' + channelId.slice(2);
+  const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${playlistId}&maxResults=15&key=${apiKey}`;
   let resp;
   try {
-    resp = await axios.get(url, { headers: HTTP_HEADERS, timeout: 20000 });
+    resp = await axios.get(url, { timeout: 20000 });
   } catch (e) {
     const status = e.response && e.response.status;
-    throw new Error(`listarVideosRSS falhou em ${url} (status=${status || 'N/A'}): ${e.message}`);
+    const detail = e.response && e.response.data && JSON.stringify(e.response.data).slice(0, 300);
+    throw new Error(`YouTube Data API falhou (status=${status || 'N/A'}): ${detail || e.message}`);
   }
-  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
-  const feed = parser.parse(resp.data);
-  const entries = feed.feed && feed.feed.entry ? [].concat(feed.feed.entry) : [];
-  return entries.map(e => ({
-    videoId: e['yt:videoId'],
-    titulo: e.title,
-    publicadoEm: e.published,
-    url: e.link && e.link['@_href'],
-    autor: e.author && e.author.name,
+  return (resp.data.items || []).map(it => ({
+    videoId: it.contentDetails.videoId,
+    titulo: it.snippet.title,
+    publicadoEm: it.contentDetails.videoPublishedAt || it.snippet.publishedAt,
+    url: `https://www.youtube.com/watch?v=${it.contentDetails.videoId}`,
+    autor: it.snippet.videoOwnerChannelTitle || it.snippet.channelTitle,
   }));
 }
 
@@ -234,8 +235,8 @@ async function processarCanal(canal) {
   const channelId = canal.channel_id || await resolverChannelId(canal.url);
   log(`  channelId: ${channelId}`);
 
-  const videos = await listarVideosRSS(channelId);
-  log(`  RSS: ${videos.length} videos`);
+  const videos = await listarVideosViaApi(channelId);
+  log(`  API: ${videos.length} videos`);
 
   const tratados = await buscarPorVideoIds(videos.map(v => v.videoId));
   const novos = videos.filter(v => !tratados.has(v.videoId));
