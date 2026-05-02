@@ -7,7 +7,7 @@ const path = require('path');
 const axios = require('axios');
 const { XMLParser } = require('fast-xml-parser');
 const { YoutubeTranscript } = require('youtube-transcript');
-const Anthropic = require('@anthropic-ai/sdk').default;
+const OpenAI = require('openai');
 
 const { buscarPorVideoIds, upsertVideo } = require('./lib/nocoStore');
 
@@ -97,42 +97,81 @@ ${transcricao}
 }
 
 async function gerarHtmlResumo({ video, transcricao }) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY nao configurada');
-  const client = new Anthropic({ apiKey });
-  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY nao configurada');
+  const client = new OpenAI({ apiKey });
+  const model = process.env.OPENAI_MODEL || 'gpt-4o';
 
-  const prompt = `Voce vai analisar a transcricao de um video do YouTube e produzir um resumo executivo em HTML.
+  const system = `Voce eh um analista de equity research senior, especializado em bolsa brasileira e mercado internacional.
+Sua tarefa eh transformar transcricoes de videos de analise de investimentos em relatorios HTML densos e acionaveis em portugues do Brasil.
+
+REGRAS INEGOCIAVEIS:
+- Extraia NUMEROS especificos da transcricao: receita, lucro, EBITDA, margens, crescimento (%), dividend yield, P/L, P/VP, ROE, ROIC, divida liquida, payout, multiplos, preco-alvo, qualquer guidance.
+- NUNCA invente numeros. Se um dado nao foi dito, omita ou marque como "n/d".
+- Sempre que houver numero, contextualize (vs trimestre anterior, vs ano anterior, vs setor).
+- Identifique a TESE do analista (bull/bear/neutro) e os principais drivers que ela sustenta.
+- Liste riscos com nomes especificos (regulatorio, alavancagem, concorrencia X, ciclo macro, FX, etc), nao genericos.
+- Liste oportunidades/catalisadores tambem com nome e prazo (ex: "venda de ativo X esperada para 2026", "expansao em Y mercado").
+- Mantenha o tom analitico, sem floreios. Direto ao ponto.
+- Responda SEMPRE somente com HTML valido completo. Sem cercas de codigo.`;
+
+  const user = `Gere um relatorio HTML completo (DOCTYPE, head, body) sobre este video.
 
 Titulo: ${video.titulo}
 URL: ${video.url}
 Canal: ${video.autor || ''}
 
-Transcricao:
+Transcricao integral:
 """
 ${transcricao}
 """
 
-Gere um documento HTML completo (com <!DOCTYPE html>, <head> e <body>) em portugues do Brasil contendo:
-- Titulo do video como <h1>
-- Link para o video
-- Secao "Principais questoes abordadas" com lista de 5 a 10 itens objetivos
-- Secao "Resumo executivo" (2-4 paragrafos)
-- Secao "Pontos de acao / aplicacoes praticas" (lista curta, se aplicavel)
-- Secao "Citacoes ou trechos de destaque" (3-5 trechos curtos da transcricao)
-Use CSS inline simples e moderno (fonte sans-serif, max-width 720px, espacamento confortavel).
-Responda SOMENTE com o HTML, sem cercas de codigo, sem comentarios fora do HTML.`;
+ESTRUTURA DO RELATORIO (na ordem):
 
-  const resp = await client.messages.create({
+1. <header> com:
+   - <h1> titulo do video
+   - linha com: empresa/ticker (se houver), setor, link "Assistir no YouTube"
+
+2. Secao "Tese central": 1 paragrafo curto (3-5 linhas) com a tese do analista. Comece com tag clara: <strong>Vies:</strong> Bull / Bear / Neutro.
+
+3. Secao "Numeros-chave": grid de cards com os indicadores citados. Cada card mostra:
+   - Nome da metrica
+   - Valor (grande, destacado)
+   - Variacao/contexto pequeno embaixo (ex: "+12% YoY", "vs 8x do setor")
+   Inclua APENAS metricas efetivamente citadas. Minimo 4, maximo 12 cards.
+
+4. Secao "Drivers e oportunidades": lista detalhada com 3-7 itens. Cada item: <strong>Driver:</strong> descricao + impacto + prazo se mencionado.
+
+5. Secao "Riscos e pontos de atencao": lista detalhada com 3-7 itens. Cada item: <strong>Risco:</strong> descricao + magnitude/probabilidade se discutido.
+
+6. Secao "Valuation e recomendacao": preco-alvo (se houver), multiplos, comparacao com pares, recomendacao implicita ou explicita do analista. Se nao houver, escreva "Nao discutido explicitamente no video".
+
+7. Secao "Trechos de destaque": 3-5 citacoes curtas e literais da transcricao (entre aspas), as mais carregadas de tese ou numeros.
+
+8. Secao "Acompanhamento sugerido": 2-4 itens objetivos (ex: "Acompanhar resultado do 2T26 em agosto", "Monitorar aprovacao da regulacao X").
+
+CSS (inline no <head>, sem libs externas):
+- font-family: -apple-system, "Segoe UI", Roboto, sans-serif
+- max-width: 760px, centralizado, padding generoso
+- Fundo body: #f7f8fa; cartao: #fff com border-radius 8px, padding 16-20px, box-shadow leve
+- h1: 24-28px peso 700, cor #0f172a
+- h2: 18-20px peso 600, com barra lateral colorida (border-left 4px) e padding-left 12px. Cores: Tese #2563eb, Numeros #0891b2, Drivers #16a34a, Riscos #dc2626, Valuation #7c3aed, Trechos #475569, Acompanhamento #ea580c
+- Cards de numeros: grid responsivo (display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px). Cada card: fundo #fff, valor em 22px peso 700 cor #0f172a, label em 12px maiusculas cor #64748b, contexto em 12px italico cor #475569
+- Listas de drivers e riscos: cada item com fundo branco, padding 12px, border-radius 6px, separador com border-left 3px (verde drivers, vermelho riscos)
+- Citacoes: <blockquote> com border-left 3px #94a3b8, fundo #f1f5f9, padding 10px 14px, fonte italica
+- Espacamento entre secoes: margin-top 28px
+
+Responda SOMENTE com o HTML completo.`;
+
+  const resp = await client.chat.completions.create({
     model,
-    max_tokens: 4096,
-    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.2,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
   });
-  const texto = resp.content
-    .filter(b => b.type === 'text')
-    .map(b => b.text)
-    .join('\n')
-    .trim();
+  const texto = (resp.choices[0]?.message?.content || '').trim();
   return texto.replace(/^```html\s*/i, '').replace(/```\s*$/i, '').trim();
 }
 

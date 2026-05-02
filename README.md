@@ -11,7 +11,7 @@ em arquivo, o que permite rodar em ambientes efemeros (Claude Code Routines, con
 - Node.js (>= 18)
 - `youtube-transcript` para legendas
 - RSS oficial do canal (`feeds/videos.xml`) para listar uploads
-- `@anthropic-ai/sdk` (Claude) para gerar o resumo HTML
+- `openai` (gpt-4o-mini) para gerar o resumo HTML
 - `axios` para Evolution API + NocoDB
 - NocoDB como storage (estado + transcricoes + HTML)
 
@@ -40,7 +40,7 @@ Veja `.env.example`. Em rotinas remotas, configure como **secrets** da routine.
 
 ```
 EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE, EVOLUTION_TO_NUMBER
-ANTHROPIC_API_KEY, ANTHROPIC_MODEL
+OPENAI_API_KEY, OPENAI_MODEL
 NOCODB_URL, NOCODB_API_KEY, NOCODB_TABLE_VIDEOS
 MAX_VIDEOS_POR_EXECUCAO, LEGENDA_IDIOMA_PREFERIDO, SALVAR_ARQUIVOS_LOCAL
 ```
