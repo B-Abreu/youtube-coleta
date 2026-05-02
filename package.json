@@ -1,0 +1,18 @@
+{
+  "name": "youtube-coleta",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Coleta diaria de transcricoes de canais do YouTube, gera resumo HTML e envia via Evolution API (WhatsApp).",
+  "main": "coletor.js",
+  "scripts": {
+    "start": "node coletor.js",
+    "dry-run": "node coletor.js --dry-run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.1",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "fast-xml-parser": "^4.5.0",
+    "youtube-transcript": "^1.2.1"
+  }
+}
