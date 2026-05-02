@@ -37,20 +37,35 @@ function slugify(s) {
     .slice(0, 80);
 }
 
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const HTTP_HEADERS = {
+  'User-Agent': UA,
+  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+};
+
 async function resolverChannelId(handleUrl) {
-  const resp = await axios.get(handleUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0' },
-    timeout: 20000,
-  });
-  const html = resp.data;
-  const m = html.match(/"channelId":"(UC[\w-]+)"/) || html.match(/channel\/(UC[\w-]+)/);
-  if (!m) throw new Error(`Nao consegui extrair channelId de ${handleUrl}`);
-  return m[1];
+  try {
+    const resp = await axios.get(handleUrl, { headers: HTTP_HEADERS, timeout: 20000 });
+    const html = resp.data;
+    const m = html.match(/"channelId":"(UC[\w-]+)"/) || html.match(/channel\/(UC[\w-]+)/);
+    if (!m) throw new Error(`Nao consegui extrair channelId de ${handleUrl}`);
+    return m[1];
+  } catch (e) {
+    const status = e.response && e.response.status;
+    throw new Error(`resolverChannelId falhou em ${handleUrl} (status=${status || 'N/A'}): ${e.message}`);
+  }
 }
 
 async function listarVideosRSS(channelId) {
   const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-  const resp = await axios.get(url, { timeout: 20000 });
+  let resp;
+  try {
+    resp = await axios.get(url, { headers: HTTP_HEADERS, timeout: 20000 });
+  } catch (e) {
+    const status = e.response && e.response.status;
+    throw new Error(`listarVideosRSS falhou em ${url} (status=${status || 'N/A'}): ${e.message}`);
+  }
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
   const feed = parser.parse(resp.data);
   const entries = feed.feed && feed.feed.entry ? [].concat(feed.feed.entry) : [];
@@ -67,9 +82,13 @@ async function pegarTranscricao(videoId) {
   try {
     const itens = await YoutubeTranscript.fetchTranscript(videoId, { lang: LANG_PREF });
     return itens.map(i => i.text).join(' ');
-  } catch (_) {
-    const itens = await YoutubeTranscript.fetchTranscript(videoId);
-    return itens.map(i => i.text).join(' ');
+  } catch (e1) {
+    try {
+      const itens = await YoutubeTranscript.fetchTranscript(videoId);
+      return itens.map(i => i.text).join(' ');
+    } catch (e2) {
+      throw new Error(`pegarTranscricao falhou para ${videoId}: ${e2.message} (lang ${LANG_PREF}: ${e1.message})`);
+    }
   }
 }
 
