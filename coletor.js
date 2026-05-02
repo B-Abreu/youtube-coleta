@@ -9,7 +9,7 @@ const { XMLParser } = require('fast-xml-parser');
 const { YoutubeTranscript } = require('youtube-transcript');
 const OpenAI = require('openai');
 
-const { buscarPorVideoIds, upsertVideo } = require('./lib/nocoStore');
+const { buscarPorVideoIds, upsertVideo, uploadHtml } = require('./lib/nocoStore');
 
 const ROOT = __dirname;
 const CANAIS_PATH = path.join(ROOT, 'canais.json');
@@ -285,12 +285,21 @@ async function processarCanal(canal) {
         log(`     [dry-run] envio WhatsApp pulado`);
       }
 
+      let attachment = null;
+      try {
+        const fileName = `${slugify(video.titulo) || video.videoId}.html`;
+        attachment = await uploadHtml(fileName, html);
+      } catch (e) {
+        log(`     aviso: upload do arquivo HTML falhou: ${e.message}`);
+      }
+
       await upsertVideo({
         ...baseRegistro,
         status: 'processado',
         transcricao: md,
         resumo_html: html,
         whatsapp_enviado: enviado,
+        ...(attachment ? { arquivo_html: attachment } : {}),
       });
     } catch (e) {
       log(`     ERRO: ${e.message}`);
